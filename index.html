@@ -487,7 +487,7 @@
             <div class="chat-avatar">AI</div>
             <div class="chat-header-info">
                 <div class="chat-header-title">Assistant IA</div>
-                <div class="chat-header-status" id="chatStatus">Configuration requise</div>
+                <div class="chat-header-status" id="chatStatus">En ligne</div>
             </div>
             <button class="chat-settings-btn" id="chatSettingsBtn" title="Paramètres API Key">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -500,25 +500,25 @@
         <!-- Chat messages view -->
         <div class="chat-messages" id="chatMessages">
             <div class="message bot" id="welcomeMessage">
-                Bonjour ! Veuillez renseigner votre clé API OpenAI dans les paramètres (icône engrenage ⚙️) afin de pouvoir converser avec moi.
+                Bonjour ! Comment puis-je vous aider aujourd'hui ?
             </div>
         </div>
 
         <!-- Settings view -->
         <div class="chat-settings-view" id="chatSettingsView">
-            <div class="settings-title">Clé API OpenAI</div>
-            <div class="settings-desc">Votre clé API sera stockée en toute sécurité de manière locale dans le stockage de votre navigateur (localStorage). Elle ne sera jamais envoyée à d'autres serveurs que l'API officielle OpenAI.</div>
+            <div class="settings-title">Clé API OpenAI (Optionnel)</div>
+            <div class="settings-desc">Par défaut, l'application utilise la clé configurée sur le serveur Vercel. Vous pouvez coller une clé API personnalisée ici pour la remplacer localement.</div>
             
             <div class="settings-input-group">
                 <input type="password" class="settings-input" id="apiKeyInput" placeholder="sk-proj-..." autocomplete="off">
             </div>
             
-            <button class="settings-save-btn" id="saveKeyBtn">Enregistrer la clé API</button>
+            <button class="settings-save-btn" id="saveKeyBtn">Enregistrer la clé locale</button>
         </div>
 
         <div class="chat-input-area">
-            <input type="text" class="chat-input" id="chatInput" placeholder="Écrivez votre message..." autocomplete="off" disabled>
-            <button class="chat-send-btn" id="chatSendBtn" aria-label="Envoyer" disabled>
+            <input type="text" class="chat-input" id="chatInput" placeholder="Écrivez votre message..." autocomplete="off">
+            <button class="chat-send-btn" id="chatSendBtn" aria-label="Envoyer">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <line x1="22" y1="2" x2="11" y2="13"></line>
                     <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -549,21 +549,15 @@
             { role: "system", content: "Tu es un assistant IA poli, utile et concis, intégré sur la page 'TESTE'." }
         ];
 
-        // Init chatbot state based on API Key existence
+        // Update display state based on key settings
         function updateChatState() {
             apiKey = localStorage.getItem('openai_api_key') || '';
             if (apiKey) {
-                chatInput.removeAttribute('disabled');
-                chatSendBtn.removeAttribute('disabled');
+                chatStatus.textContent = 'En ligne (Clé locale)';
+                chatStatus.style.color = '#10b981';
+            } else {
                 chatStatus.textContent = 'En ligne';
                 chatStatus.style.color = '#10b981';
-                welcomeMessage.textContent = "Clé API configurée ! Comment puis-je vous aider aujourd'hui ?";
-            } else {
-                chatInput.setAttribute('disabled', 'true');
-                chatSendBtn.setAttribute('disabled', 'true');
-                chatStatus.textContent = 'Configuration requise';
-                chatStatus.style.color = '#f59e0b';
-                welcomeMessage.textContent = "Bonjour ! Veuillez renseigner votre clé API OpenAI dans les paramètres (icône engrenage ⚙️) afin de pouvoir converser avec moi.";
             }
         }
 
@@ -577,9 +571,7 @@
                 chatIconOpen.style.display = 'none';
                 chatIconClose.style.display = 'block';
                 chatTrigger.classList.add('active');
-                if (apiKey) {
-                    setTimeout(() => chatInput.focus(), 300);
-                }
+                setTimeout(() => chatInput.focus(), 300);
             } else {
                 chatWindow.classList.remove('open');
                 chatIconOpen.style.display = 'block';
@@ -608,15 +600,12 @@
             const enteredKey = apiKeyInput.value.trim();
             if (enteredKey) {
                 localStorage.setItem('openai_api_key', enteredKey);
-                updateChatState();
-                isSettingsOpen = false;
-                chatSettingsView.classList.remove('active');
             } else {
                 localStorage.removeItem('openai_api_key');
-                updateChatState();
-                isSettingsOpen = false;
-                chatSettingsView.classList.remove('active');
             }
+            updateChatState();
+            isSettingsOpen = false;
+            chatSettingsView.classList.remove('active');
         });
 
         // Add Message to DOM
@@ -648,7 +637,7 @@
         // Send Message Logic
         async function sendMessage() {
             const text = chatInput.value.trim();
-            if (!text || !apiKey) return;
+            if (!text) return;
 
             // User Message
             addMessage(text, true);
@@ -659,22 +648,39 @@
             const typingIndicator = addTypingIndicator();
 
             try {
-                const response = await fetch("https://api.openai.com/v1/chat/completions", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${apiKey}`
-                    },
-                    body: JSON.stringify({
-                        model: "gpt-4o-mini",
-                        messages: messages
-                    })
-                });
+                let response;
+                
+                if (apiKey) {
+                    // Call OpenAI direct if local API key is provided
+                    response = await fetch("https://api.openai.com/v1/chat/completions", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify({
+                            model: "gpt-4o-mini",
+                            messages: messages
+                        })
+                    });
+                } else {
+                    // Call Vercel Serverless Function backend by default
+                    response = await fetch("/api/chat", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            messages: messages
+                        })
+                    });
+                }
 
                 typingIndicator.remove();
 
                 if (!response.ok) {
-                    throw new Error("Erreur de l'API OpenAI");
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.error || "Erreur de l'API");
                 }
 
                 const data = await response.json();
@@ -686,7 +692,7 @@
             } catch (error) {
                 console.error(error);
                 typingIndicator.remove();
-                addMessage("Désolé, une erreur est survenue lors de la communication avec l'IA. Veuillez vérifier votre clé API ou votre console.", false);
+                addMessage("Erreur : " + error.message, false);
             }
         }
 
